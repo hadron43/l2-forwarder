@@ -15,13 +15,14 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <thread>
 
 #include "main.cpp"
 
 using namespace std;
 
 // max queue size
-#define MAX_QUEUE_SIZE 1024
+#define MAX_QUEUE_SIZE 3000000
 
 // read / write interface names, port number
 #define read_iface "lo"
@@ -33,6 +34,45 @@ using namespace std;
 // reader process pops from this queue, writer pushes to this queue
 queue<char *> read_write_queue;
 
+// lock for manipulating queue
+mutex rw_lock;
+
+void writer() {
+    char *buff;
+    while(1) {
+        while(read_write_queue.empty()) {
+            cout << "queue empty, writer sleeping for 1s..." << "\n";
+            sleep(1);
+        }
+
+        rw_lock.lock();
+        buff = read_write_queue.front();
+        read_write_queue.pop();
+        rw_lock.unlock();
+
+        send(n_sd, buff, strlen(buff), 0);
+        free(buff);
+    }
+}
+
+void reader() {
+    char *buff;
+    while(1) {
+        buff = new char[BUFF_SIZE];
+        recv(r_sd, buff, sizeof(buff), 0);
+
+        if(read_write_queue.size() >= MAX_QUEUE_SIZE) {
+            // cout << "queue full, msg dropped" << "\n";
+            free(buff);
+            continue;
+        }
+
+        rw_lock.lock();
+        read_write_queue.push(buff);
+        rw_lock.unlock();
+    }
+}
+
 int main(int argc, char * argv[]) {
     // assuming server will first start listening to connections
     init_reader(read_port, read_ip_addr, read_iface);
@@ -40,11 +80,11 @@ int main(int argc, char * argv[]) {
 
     cout << "reader, writer intialized, starting communication" << "\n";
 
-    char buff[1024] = {0};
-    recv(r_sd, buff, sizeof(buff), 0);
-    cout << "received: " << buff << "\n";
+    thread reader_thread(reader);
+    thread writer_thread(writer);
 
-    char *msg = "Hello World!";
-    send(n_sd, msg, strlen(msg), 0);
-    cout << "sent: " << msg << "\n";
+    writer_thread.join();
+    reader_thread.join();
+
+    return 0;
 }

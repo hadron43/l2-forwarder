@@ -14,6 +14,7 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <thread>
 
 #include "main.cpp"
 
@@ -26,6 +27,21 @@ using namespace std;
 #define read_port 1002
 #define write_port 1000
 
+void writer() {
+    char buff[BUFF_SIZE];
+    while(1) {
+        for(int i = 0; i < sizeof(buff); ++i)   buff[i] = random() % 255;
+        send(n_sd, buff, strlen(buff), 0);
+    }
+}
+
+void reader() {
+    char buff[BUFF_SIZE];
+    while(1) {
+        recv(r_sd, buff, sizeof(buff), 0);
+    }
+}
+
 int main(int argc, char * argv[]) {
     init_writer(write_port, write_iface);
     cout << "sleep..." << "\n";
@@ -33,10 +49,12 @@ int main(int argc, char * argv[]) {
     init_reader(read_port, read_ip_addr, read_iface);
 
     cout << "reader, writer intialized, starting communication" << "\n";
-    char *msg = "Hello World!";
-    send(n_sd, msg, strlen(msg), 0);
-    cout << "sent: " << msg << "\n";
-    char buff[1024] = {0};
-    recv(r_sd, buff, sizeof(buff), 0);
-    cout << "received: " << buff << "\n";
+
+    thread writer_thread(writer);
+    thread reader_thread(reader);
+
+    writer_thread.join();
+    reader_thread.join();
+
+    return 0;
 }
